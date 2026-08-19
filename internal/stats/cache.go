@@ -48,3 +48,11 @@ func (c *Cache) Record(accountID string, durationSec int) {
 	s.CallCount++
 	s.TotalDurationSec += int64(durationSec)
 }
+// Set overwrites an account's cached totals directly, without incrementing.
+// Used to warm the cache from the durable store at startup.
+func (c *Cache) Set(accountID string, st AccountStats) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s := st
+	c.m[accountID] = &s
+}

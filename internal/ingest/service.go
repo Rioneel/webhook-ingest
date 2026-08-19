@@ -111,4 +111,18 @@ func (s *Service) Wait(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-
+// Warm loads durable per-account totals into the in-memory cache. Call once
+// at startup so a restart does not present stale zeroed stats.
+func (s *Service) Warm(ctx context.Context) error {
+	rows, err := s.store.AllAccountStats(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		s.cache.Set(r.AccountID, stats.AccountStats{
+			CallCount:        r.Stats.CallCount,
+			TotalDurationSec: r.Stats.TotalDurationSec,
+		})
+	}
+	return nil
+}

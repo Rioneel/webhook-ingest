@@ -40,6 +40,10 @@ func main() {
 	defer func() { _ = rdb.Close() }()
 
 	svc := ingest.New(st, stats.NewCache(), rdb, log)
+	if err := svc.Warm(ctx); err != nil {
+		log.Error("warm stats cache", "err", err)
+		os.Exit(1)
+	}
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.NewRouter(svc, log)}
 
 	go func() {

@@ -125,3 +125,27 @@ func (s *Store) AccountStats(ctx context.Context, accountID string) (Stats, erro
 	}
 	return st, nil
 }
+// AccountStatsRow pairs an account_id with its durable aggregate.
+type AccountStatsRow struct {
+	AccountID string
+	Stats     Stats
+}
+
+// AllAccountStats reads every account's durable aggregate, for cache warm-up at startup.
+func (s *Store) AllAccountStats(ctx context.Context) ([]AccountStatsRow, error) {
+	rows, err := s.pool.Query(ctx, `SELECT account_id, call_count, total_duration_sec FROM account_stats`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AccountStatsRow
+	for rows.Next() {
+		var r AccountStatsRow
+		if err := rows.Scan(&r.AccountID, &r.Stats.CallCount, &r.Stats.TotalDurationSec); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

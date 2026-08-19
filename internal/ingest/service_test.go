@@ -195,3 +195,36 @@ func TestWaitBlocksUntilRecordingProcessingFinishes(t *testing.T) {
 	}
 }
 
+func TestWarmLoadsCacheFromDurableStore(t *testing.T) {
+	cfg := config.Load()
+	st := testutil.NewStore(t)
+	_, _, accountID := testutil.IDs(t, st)
+	ctx := context.Background()
+
+	if err := st.IncrementAccountStats(ctx, accountID, 30); err != nil {
+		t.Fatalf("IncrementAccountStats: %v", err)
+	}
+	if err := st.IncrementAccountStats(ctx, accountID, 12); err != nil {
+		t.Fatalf("IncrementAccountStats: %v", err)
+	}
+
+	rdb, err := redisclient.New(ctx, cfg.RedisAddr)
+	if err != nil {
+		t.Fatalf("redis: %v", err)
+	}
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	// Fresh cache, simulating a just-restarted process — durable data already
+	// exists in Postgres, nothing has been Recorded into this cache yet.
+	svc := ingest.New(st, stats.NewCache(), rdb, log)
+
+	if err := svc.Warm(ctx); err != nil {
+		t.Fatalf("Warm: %v", err)
+	}
+
+	got := svc.Stats(accountID)
+	if got.CallCount != 2 || got.TotalDurationSec != 42 {
+		t.Fatalf("got %+v, want CallCount=2 TotalDurationSec=42", got)
+	}
+}
