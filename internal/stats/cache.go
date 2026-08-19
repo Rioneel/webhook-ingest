@@ -26,6 +26,7 @@ func NewCache() *Cache {
 // Get returns a snapshot of an account's totals. Unknown accounts read as zero.
 func (c *Cache) Get(accountID string) AccountStats {
 	c.mu.RLock()
+	//- doesnot lock anything
 	defer c.mu.RUnlock()
 
 	s, ok := c.m[accountID]

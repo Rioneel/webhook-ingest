@@ -30,6 +30,7 @@ func New(s *store.Store, c *stats.Cache, rdb *redis.Client, log *slog.Logger) *S
 }
 
 // Stats returns the cached totals for an account.
+//- never touches DB 
 func (s *Service) Stats(accountID string) stats.AccountStats {
 	return s.cache.Get(accountID)
 }
@@ -86,6 +87,7 @@ func (s *Service) Ingest(ctx context.Context, evt Event) error {
 
 // processRecording downloads and transcodes the call recording, then marks
 // the call as done.
+//- how do we know if the process recording is done ?? possible error
 func (s *Service) processRecording(ctx context.Context, rec store.Event) error {
 	time.Sleep(recordingWork)
 	return s.store.MarkRecordingProcessed(ctx, rec.CallID)

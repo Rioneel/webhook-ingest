@@ -62,7 +62,7 @@ func (s *Store) Close() { s.pool.Close() }
 func (s *Store) EventExists(ctx context.Context, eventID string) (bool, error) {
 	var one int
 	err := s.pool.QueryRow(ctx,
-		`SELECT 1 FROM events WHERE event_id = $1 LIMIT 1`, eventID).Scan(&one)
+		`SELECT 1 FROM events WHERE event_id = $1 LIMIT 1`, eventID).Scan(&one) //- sql issue ??
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -82,6 +82,8 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) error {
 }
 
 // UpsertCall creates or refreshes the call record for this event.
+//- upsert not best practice
+
 func (s *Store) UpsertCall(ctx context.Context, e Event) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO calls (call_id, account_id, status, duration_sec, recording_url, updated_at)
@@ -93,9 +95,10 @@ func (s *Store) UpsertCall(ctx context.Context, e Event) error {
 		     updated_at    = now()`,
 		e.CallID, e.AccountID, e.Status, e.DurationSec, e.RecordingURL)
 	return err
-}
+} //- insertEvent inserts callid , and upsertCall insert Callid not best practice only updates on conflict.
 
 // MarkRecordingProcessed flags the call's recording as handled.
+//- possible issue in service or here
 func (s *Store) MarkRecordingProcessed(ctx context.Context, callID string) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE calls SET recording_processed = TRUE, updated_at = now()
@@ -104,6 +107,7 @@ func (s *Store) MarkRecordingProcessed(ctx context.Context, callID string) error
 }
 
 // IncrementAccountStats folds one completed call into the durable aggregate.
+//- possible issue
 func (s *Store) IncrementAccountStats(ctx context.Context, accountID string, durationSec int) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO account_stats (account_id, call_count, total_duration_sec)
