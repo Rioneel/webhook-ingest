@@ -38,6 +38,8 @@ func (c *Cache) Get(accountID string) AccountStats {
 
 // Record folds one completed call into an account's running totals.
 func (c *Cache) Record(accountID string, durationSec int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	s, ok := c.m[accountID]
 	if !ok {
 		s = &AccountStats{}

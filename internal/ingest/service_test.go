@@ -9,6 +9,12 @@ import (
 	"time"
 	"sync"
 	"github.com/convin/webhook-ingest/internal/testutil"
+	"io"
+	"log/slog"
+	"github.com/convin/webhook-ingest/internal/config"
+	"github.com/convin/webhook-ingest/internal/redisclient"
+	"github.com/convin/webhook-ingest/internal/stats"
+	"github.com/convin/webhook-ingest/internal/ingest"
 )
 
 // eventJSON builds a well-formed call-completion payload.
@@ -52,16 +58,16 @@ func TestWebhookStoresEventAndCall(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("stored %d copies of %s, want 1", n, eventID)
 	}
-/*
+
 	var gotAccount string
-	row := st.Pool().QueryRow(ctx, `SELECT account_id FROM calls WHERE call_id = $1`, callID)
-	if err := row.Scan(&gotAccount); err != nil {
+	row1 := st.Pool().QueryRow(ctx, `SELECT account_id FROM calls WHERE call_id = $1`, callID)
+	if err := row1.Scan(&gotAccount); err != nil {
 		t.Fatalf("expected a call record for %s: %v", callID, err)
 	}
 	if gotAccount != accountID {
 		t.Fatalf("call belongs to %q, want %q", gotAccount, accountID)
 	}
-		*/
+		
 }
 
 func TestDuplicateDeliveryIsIgnored(t *testing.T) {
@@ -150,3 +156,42 @@ func TestRecordingGetsMarkedProcessed(t *testing.T) {
 		t.Fatal("expected recording_processed to be true")
 	}
 }
+func TestWaitBlocksUntilRecordingProcessingFinishes(t *testing.T) {
+	cfg := config.Load()
+	st := testutil.NewStore(t)
+	_, callID, accountID := testutil.IDs(t, st)
+
+	rdb, err := redisclient.New(context.Background(), cfg.RedisAddr)
+	if err != nil {
+		t.Fatalf("redis: %v", err)
+	}
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := ingest.New(st, stats.NewCache(), rdb, log)
+
+	evt := ingest.Event{
+		EventID: "evt_" + callID, CallID: callID, AccountID: accountID,
+		Status: "completed", DurationSec: 5,
+		RecordingURL: "https://example.com/a.wav",
+		OccurredAt:   time.Now(),
+	}
+	if err := svc.Ingest(context.Background(), evt); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	if err := svc.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+
+	// No sleep here on purpose — Wait returning is supposed to be the guarantee.
+	var processed bool
+	row := st.Pool().QueryRow(context.Background(), `SELECT recording_processed FROM calls WHERE call_id = $1`, callID)
+	if err := row.Scan(&processed); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected recording_processed to be true immediately after Wait returns")
+	}
+}
+
