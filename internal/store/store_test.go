@@ -8,7 +8,7 @@ import (
 	"github.com/convin/webhook-ingest/internal/testutil"
 )
 
-func TestInsertEventThenExists(t *testing.T) {
+func TestInsertEventThenDuplicateIsNoOp(t *testing.T) {
 	s := testutil.NewStore(t)
 	eventID, callID, accountID := testutil.IDs(t, s)
 	ctx := context.Background()
@@ -18,26 +18,23 @@ func TestInsertEventThenExists(t *testing.T) {
 		Status: "completed", DurationSec: 10, Payload: []byte(`{}`),
 	}
 
-	exists, err := s.EventExists(ctx, eventID)
+	inserted, err := s.InsertEvent(ctx, evt)
 	if err != nil {
-		t.Fatalf("EventExists: %v", err)
-	}
-	if exists {
-		t.Fatal("expected event to be absent before insert")
-	}
-
-	if err := s.InsertEvent(ctx, evt); err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}
-
-	exists, err = s.EventExists(ctx, eventID)
-	if err != nil {
-		t.Fatalf("EventExists: %v", err)
+	if !inserted {
+		t.Fatal("expected first insert to report inserted=true")
 	}
-	if !exists {
-		t.Fatal("expected event to exist after insert")
+
+	inserted, err = s.InsertEvent(ctx, evt)
+	if err != nil {
+		t.Fatalf("InsertEvent (dup): %v", err)
+	}
+	if inserted {
+		t.Fatal("expected duplicate insert to report inserted=false")
 	}
 }
+
 
 func TestIncrementAccountStatsAccumulates(t *testing.T) {
 	s := testutil.NewStore(t)
